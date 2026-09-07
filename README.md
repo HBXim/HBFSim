@@ -65,3 +65,7 @@ client can be installed with `python3 -m pip install -e .`.
 ## License
 
 HBFSim is released under the MIT License. See `LICENSE`.
+
+## Contact
+
+Jinheng Li ([jinheng.li@mbzuai.ac.ae](mailto:jinheng.li@mbzuai.ac.ae))
