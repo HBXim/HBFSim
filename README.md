@@ -1,8 +1,8 @@
 # HBFSim
 
-HBFSim is a C++20 event-driven simulator for heterogeneous memory systems
-composed of high-bandwidth memory (HBM), high-bandwidth flash (HBF), and an
-optional external backing tier.
+HBFSim is a simulation framework for studying the architectural trade-offs
+of heterogeneous memory systems that integrate high-bandwidth memory (HBM)
+and high-bandwidth flash (HBF).
 
 The engine models timing, capacity, data movement, flash translation, garbage
 collection, persistence, thermal pacing, and accounting in one causal event
