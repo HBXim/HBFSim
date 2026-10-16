@@ -1369,6 +1369,12 @@ std::uint64_t HbfDevice::gc_reserve_requirement_pages() const {
 }
 
 std::size_t HbfDevice::active_planes_in_stack(std::size_t stack) const {
+    if (active_planes_cache_.size() <= stack) {
+        active_planes_cache_.resize(stack + 1);
+    }
+    if (active_planes_cache_[stack]) {
+        return *active_planes_cache_[stack];
+    }
     const auto pps = planes_per_stack();
     std::size_t active = 0;
     for (std::size_t plane_index = stack * pps;
@@ -1387,6 +1393,7 @@ std::size_t HbfDevice::active_planes_in_stack(std::size_t stack) const {
             active++;
         }
     }
+    active_planes_cache_[stack] = active;
     return active;
 }
 
@@ -2348,6 +2355,7 @@ void HbfDevice::reserve_physical_program_range(
             const auto found = std::find(free_blocks.begin(), free_blocks.end(), block_index);
             free_blocks.erase(found);
             block.role = BlockRole::RawPhysical;
+            invalidate_active_planes();
         }
         block.next_page++;
         block.free_pages--;
@@ -2806,6 +2814,7 @@ void HbfDevice::reserve_static_physical_blocks(
             continue;
         }
         block.role = BlockRole::StaticReadOnly;
+        invalidate_active_planes();
         block.free_pages = 0;
         block.next_page = config_.pages_per_block;
         free_pages_ -= config_.pages_per_block;
@@ -2972,6 +2981,7 @@ void HbfDevice::reserve_raw_physical_block_extent(
             continue;
         }
         blocks_.at(block_index).role = BlockRole::RawPhysical;
+        invalidate_active_planes();
         stats_.raw_reserved_pages = checked_add(
             stats_.raw_reserved_pages,
             config_.pages_per_block,
@@ -3492,6 +3502,7 @@ void HbfDevice::restore_persistent_image(const HbfPersistentImage& image) {
         auto& destination = blocks_[index];
         destination = BlockState{};
         destination.role = block_role(source.role);
+        invalidate_active_planes();
         destination.valid_pages = source.valid_pages;
         destination.invalid_pages = source.invalid_pages;
         destination.free_pages = source.free_pages;
@@ -7948,6 +7959,9 @@ std::size_t HbfDevice::allocate_block_from_plane(std::size_t plane_index, BlockR
         throw std::runtime_error("HBF free-block pool contains a non-erased block");
     }
     block.role = role;
+    if (role == BlockRole::StaticReadOnly || role == BlockRole::RawPhysical) {
+        invalidate_active_planes();
+    }
     return block_index;
 }
 
@@ -9379,6 +9393,9 @@ void HbfDevice::reset_erased_block(std::size_t block_index) {
     free_pages_per_stack_.at(stack_of_block(block_index)) += newly_free_pages;
     // The P/E cycle was counted when the erase was scheduled.
     const auto erase_count = block.erase_count;
+    if (block.role == BlockRole::StaticReadOnly || block.role == BlockRole::RawPhysical) {
+        invalidate_active_planes();
+    }
     block = BlockState{};
     block.role = BlockRole::Free;
     block.free_pages = config_.pages_per_block;

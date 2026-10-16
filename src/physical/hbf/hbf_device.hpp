@@ -2086,6 +2086,10 @@ private:
     [[nodiscard]] std::uint64_t gc_reserve_requirement_pages() const;
     // Planes of the stack with at least one managed (non static/raw) block.
     [[nodiscard]] std::size_t active_planes_in_stack(std::size_t stack) const;
+    // Cached per stack: the walk runs on every host page write (GC admission).
+    // Dropped wherever a block enters or leaves the static/raw roles.
+    mutable std::vector<std::optional<std::size_t>> active_planes_cache_;
+    void invalidate_active_planes() noexcept { active_planes_cache_.clear(); }
     // The stack's GC-only reserve in pages: gc_reserved_free_blocks_per_plane
     // blocks for every plane with managed blocks.
     [[nodiscard]] std::uint64_t gc_reserve_pages(std::size_t stack) const;
