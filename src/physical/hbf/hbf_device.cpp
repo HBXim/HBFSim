@@ -7864,18 +7864,40 @@ std::uint64_t HbfDevice::allocate_free_page(
             return take_page(*preferred_plane);
         }
         const auto first = choose_allocation_plane(stack, role);
+        // gc_headroom walks the stack, so it is evaluated only when a block
+        // is about to be opened.
+        const auto may_open_block = [&]() {
+            if (role == BlockRole::Mapping && gc_active_by_stack_.at(stack)) {
+                return true;
+            }
+            const auto pool = gc_headroom(stack, BlockRole::Data).relocation_pages;
+            return pool >= checked_add(
+                gc_reserve_requirement_pages(), config_.pages_per_block,
+                "HBF foreground block admission");
+        };
+        // The cursor-selected plane takes the page, from its own frontier or
+        // from a block newly opened on it, so consecutive pages stripe across
+        // the stack's planes and program in parallel. Taking any frontier
+        // with room first would keep filling a single open block, i.e. one
+        // plane per stack, until it is full.
+        if (!preferred_plane) {
+            const auto striped = stack_base + first;
+            if (active_has_room(striped)) {
+                return take_page(striped);
+            }
+            if (!planes_.at(striped).free_blocks.empty() && may_open_block()) {
+                active_block_ref(planes_.at(striped), role) =
+                    allocate_block_from_plane(striped, role);
+                return take_page(striped);
+            }
+        }
         for (std::size_t offset = 0; offset < pps; ++offset) {
             const auto plane_candidate = stack_base + (first + offset) % pps;
             if (active_has_room(plane_candidate)) {
                 return take_page(plane_candidate);
             }
         }
-        const auto pool = gc_headroom(stack, BlockRole::Data).relocation_pages;
-        const bool above_floor = pool >= checked_add(
-            gc_reserve_requirement_pages(), config_.pages_per_block,
-            "HBF foreground block admission");
-        if (above_floor ||
-            (role == BlockRole::Mapping && gc_active_by_stack_.at(stack))) {
+        if (may_open_block()) {
             std::optional<std::size_t> open_plane;
             if (preferred_plane && !planes_.at(*preferred_plane).free_blocks.empty()) {
                 open_plane = preferred_plane;
